@@ -20,7 +20,7 @@ let stationid;
 // Initialize the WebSocket connection when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket(); // Activate WebSocket on start
-    setTimeout(initializeStreamButton, 1000);
+    setTimeout(initializeStreamButton, 700);
 });
 
 // Setup WebSocket connection
@@ -120,13 +120,22 @@ function initializeStreamButton() {
         StreamButton.id = 'Stream-on-off';
         StreamButton.classList.add('hide-phone');
         StreamButton.setAttribute('data-tooltip', 'Stream on/off');
-        StreamButton.innerHTML = '<strong>STREAM</strong>';
-        StreamButton.style.marginTop = '16px';
+        StreamButton.style.marginTop = '18px';
         StreamButton.style.marginLeft = '5px';
         StreamButton.style.width = '100px';
+		StreamButton.style.height = '22px';
         StreamButton.classList.add('bg-color-2');
         StreamButton.style.borderRadius = '0px';
         StreamButton.title = `Plugin Version: ${plugin_version}`;
+
+        // Add SVG icon and text
+        StreamButton.innerHTML = `
+            <svg width="22" height="22" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: -3px;">
+                <path d="M8 5v14l11-7L8 5z" fill="#00FF00"/>
+            </svg>
+            <strong>STREAM</strong>
+        `;
+        
         buttonWrapper.appendChild(StreamButton);
         StreamButton.addEventListener('mousedown', startPressTimer);
         StreamButton.addEventListener('mouseup', cancelPressTimer);
