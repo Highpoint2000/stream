@@ -1,7 +1,9 @@
-# RDS-Logger Plugin for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
-This plugin provides logging functions for the FM-DX web server.
+# Stream Plugin for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
+This plugin provides a Stream button which can be used to access a direct link to the live stream after the station has been successfully identified (button becomes light!).
 
-![image](https://github.com/user-attachments/assets/4adb5aee-d36a-4617-af79-bdcc4d8bd3b9)
+![image](https://github.com/user-attachments/assets/cd4e5941-159d-47a4-8477-d333b31f1d9a)
+
+
 
 
 ## Version 1.1 (only works from web server version 1.3.5!!!)
