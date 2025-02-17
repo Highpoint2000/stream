@@ -1,16 +1,17 @@
+(() => {
 ///////////////////////////////////////////////////////////////
 ///                                                         ///
-///  STREAM PLUGIN SCRIPT FOR FM-DX-WEBSERVER (V1.0)        ///
+///  STREAM PLUGIN SCRIPT FOR FM-DX-WEBSERVER (V1.1)        ///
 ///                                                         /// 
-///  by Highpoint              last update: 12.09.24        ///
+///  by Highpoint              last update: 17.02.25        ///
 ///                                                         ///
 ///  https://github.com/Highpoint2000/stream                ///
 ///                                                         ///
 ///////////////////////////////////////////////////////////////
 
-(() => {
+///  This plugin only works from web server version 1.3.5 !!!
 
-const plugin_version = 'V1.0'; // Plugin version
+const plugin_version = 'V1.1'; // Plugin version
 let pressTimer; // Timer variable
 const longPressDuration = 1000; // Duration for long press in milliseconds
 let streamWindow; // Variable to keep track of the opened stream window
@@ -20,7 +21,8 @@ let stationid;
 // Initialize the WebSocket connection when the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
     setupWebSocket(); // Activate WebSocket on start
-    setTimeout(initializeStreamButton, 700);
+    // Erstelle den Button über die Plugin-Funktion
+    createButton('Stream-on-off');
 });
 
 // Setup WebSocket connection
@@ -40,7 +42,7 @@ async function setupWebSocket() {
 
         autoScanSocket.addEventListener("close", (event) => {
             console.log("WebSocket closed:", event);
-            // Optionally, attempt to reconnect after a delay
+            // Optional: Versuche nach einer kurzen Pause neu zu verbinden
             setTimeout(setupWebSocket, 5000);
         });
 
@@ -56,43 +58,37 @@ async function handleWebSocketMessage(event) {
         const frequency = eventData.freq;
         const txInfo = eventData.txInfo;
 
-        // Extract stationid from txInfo
+        // Extrahiere die stationid aus txInfo
         stationid = txInfo ? txInfo.id : "";
-        const picode = eventData.pi; // Assuming `pi` is available in the eventData
-        const city = txInfo ? txInfo.city : ""; // Assuming `city` is available in txInfo
+        const picode = eventData.pi; // Annahme: `pi` ist in eventData vorhanden
+        const city = txInfo ? txInfo.city : ""; // Annahme: `city` ist in txInfo vorhanden
         const itu = txInfo ? txInfo.itu : "";
 
-        // Fetch the station ID if it's not available and itu is 'POL'
+        // Hole die StationID, falls nicht vorhanden und itu === 'POL'
         if (itu === 'POL') {
             const fetchedStationID = await fetchstationid(frequency, picode, city);
             if (fetchedStationID) {
-                // console.log("Fetched Station ID:", fetchedStationID);
-                stationid = fetchedStationID; // Update the stationid variable
+                stationid = fetchedStationID;
             }
         }
 
-        // Determine if the stream button should be active
-        const isActive = !!stationid; // isActive is true if stationid is not empty
-
-        // Update button class and click event based on the presence of stationid
-        if (StreamButton) {
+        // Aktualisiere den Button basierend auf der stationid
+        const $pluginButton = $('#Stream-on-off');
+        if ($pluginButton.length > 0) {
             if (stationid) {
-                StreamButton.classList.add('bg-color-4');
-                StreamButton.classList.remove('bg-color-2');
-                StreamButton.onclick = () => {
+                $pluginButton.addClass('bg-color-4').removeClass('bg-color-2');
+                // Klick-Event: Öffne das Stream-Fenster
+                $pluginButton.off('click').on('click', () => {
                     streamWindow = window.open(`https://fmscan.org/stream.php?i=${stationid}`, 'newWindow', 'width=800,height=160');
                     if (streamWindow) {
-                        streamWindow.focus(); // Bring the window to the foreground
+                        streamWindow.focus(); // Fenster in den Vordergrund holen
                     }
-                };
+                });
             } else {
-                StreamButton.classList.add('bg-color-2');
-                StreamButton.classList.remove('bg-color-4');
-                StreamButton.onclick = null; // Disable click event if not active
+                $pluginButton.addClass('bg-color-2').removeClass('bg-color-4');
+                $pluginButton.off('click');
             }
         }
-
-        // console.log("Station ID:", stationid);
     } catch (error) {
         console.error("Error processing WebSocket message:", error);
     }
@@ -110,117 +106,100 @@ function cancelPressTimer() {
     clearTimeout(pressTimer);
 }
 
-// Create the stream button and append it to the button wrapper
-const StreamButton = document.createElement('button');
+// ───────────────────────────────────────────────────────────────
+// New button creation and migration of event listeners
+function createButton(buttonId) {
+  (function waitForFunction() {
+    const maxWaitTime = 10000;
+    let functionFound = false;
 
-function initializeStreamButton() {
-    const buttonWrapper = document.getElementById('button-wrapper') || createDefaultButtonWrapper();
+    const observer = new MutationObserver((mutationsList, observer) => {
+      if (typeof addIconToPluginPanel === 'function') {
+        observer.disconnect();
+        // Erstelle den Button via Plugin-Panel
+        // Ändere hier das Label von "Screenshot" zu "STREAM"
+        addIconToPluginPanel(buttonId, "STREAM", "solid", "play", `Plugin Version: ${plugin_version}`);
+        functionFound = true;
 
-    if (buttonWrapper) {
-        StreamButton.id = 'Stream-on-off';
-        StreamButton.classList.add('hide-phone');
-        StreamButton.setAttribute('data-tooltip', 'Stream on/off');
-        StreamButton.style.marginTop = '18px';
-        StreamButton.style.marginLeft = '5px';
-        StreamButton.style.width = '100px';
-		StreamButton.style.height = '22px';
-        StreamButton.classList.add('bg-color-2');
-        StreamButton.style.borderRadius = '0px';
-        StreamButton.title = `Plugin Version: ${plugin_version}`;
+        const buttonObserver = new MutationObserver(() => {
+          const $pluginButton = $(`#${buttonId}`);
+          if ($pluginButton.length > 0) {
+            // Füge die Event-Listener für den Long-Press hinzu
+            $pluginButton.on('mousedown', startPressTimer);
+            $pluginButton.on('mouseup mouseleave', cancelPressTimer);
+            // Entferne diesen Observer, um Konflikte mit separaten Click-Handlern zu vermeiden
+            buttonObserver.disconnect();
+          }
+        });
+        buttonObserver.observe(document.body, { childList: true, subtree: true });
+      }
+    });
 
-        // Add SVG icon and text
-        StreamButton.innerHTML = `
-            <svg width="22" height="22" viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: -3px;">
-                <path d="M8 5v14l11-7L8 5z" fill="#00FF00"/>
-            </svg>
-            <strong>STREAM</strong>
-        `;
-        
-        buttonWrapper.appendChild(StreamButton);
-        StreamButton.addEventListener('mousedown', startPressTimer);
-        StreamButton.addEventListener('mouseup', cancelPressTimer);
-        StreamButton.addEventListener('mouseleave', cancelPressTimer);
-        console.log('Stream button successfully added.');
-    } else {
-        console.error('Unable to add button.');
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      observer.disconnect();
+      if (!functionFound) {
+        console.error(`Function addIconToPluginPanel not found after ${maxWaitTime / 1000} seconds.`);
+      }
+    }, maxWaitTime);
+  })();
+
+  // Zusätzliche CSS-Anpassungen für den neuen Button
+  const aStreamCss = `
+    #${buttonId}:hover {
+      color: var(--color-5);
+      filter: brightness(120%);
     }
-}
-
-// Create a default button wrapper if it does not exist
-function createDefaultButtonWrapper() {
-    const wrapperElement = document.querySelector('.tuner-info');
-    if (wrapperElement) {
-        const buttonWrapper = document.createElement('div');
-        buttonWrapper.classList.add('button-wrapper');
-        buttonWrapper.id = 'button-wrapper';
-        buttonWrapper.appendChild(StreamButton);
-        wrapperElement.appendChild(buttonWrapper);
-        wrapperElement.appendChild(document.createElement('br'));
-        return buttonWrapper;
-    } else {
-        console.error('Standard location not found. Unable to add button.');
-        return null;
-    }
+  `;
+  $("<style>")
+    .prop("type", "text/css")
+    .html(aStreamCss)
+    .appendTo("head");
 }
 
 // Fetch the station ID from the URL
 async function fetchstationid(frequency, picode, city) { 
     try {
-        // Check if data is already cached
+        // Überprüfe, ob die Daten bereits im Cache sind
         if (!cachedData) {
-            // Fetch the content from the specified URL if not cached
             const response = await fetch("https://tef.noobish.eu/logos/scripts/StationID_PL.txt");
-
-            // Check if the response is successful
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-
-            // Read the text content from the response
             cachedData = await response.text();
-        } else {
-            // console.log('Using cached data.');
         }
 
-        // Remove the period from frequency
+        // Entferne den Punkt aus der Frequenz
         const cleanedFreq = frequency.replace('.', '');
 
-        // Remove all special characters from city and convert to lowercase
+        // Entferne Sonderzeichen aus der Stadtbezeichnung und wandle in Kleinbuchstaben um
         const cleanedCity = city.replace(/[^a-z]/gi, '').toLowerCase();
 
-        // Extract the first four characters of the cleaned city
+        // Extrahiere die ersten drei Zeichen der bereinigten Stadt
         const cityPrefix = cleanedCity.substring(0, 3);
 
-        // Create a pattern with wildcards around each of the first four characters of the cleaned city
+        // Erstelle ein Muster mit Wildcards um jedes der ersten drei Zeichen der Stadt
         const cityPattern = cityPrefix
             .split('')
             .map(char => `.*${char}`)
             .join('');
         
-        // Build the target string based on the provided variables with wildcards
+        // Baue den Suchstring mit Wildcards zusammen
         const targetString = `${cleanedFreq};${picode};${cityPattern}.*`;
-        // console.log(`Searching for specified combination: ${targetString}`);
 
-        // Create a case-insensitive regular expression to match the target string
+        // Erstelle einen Regex (case-insensitive), um den String zu finden
         const regex = new RegExp(targetString, 'i');
 
-        // Find the line that matches the target regex
+        // Suche in den gecachten Daten
         const targetLine = cachedData.split('\n').find(line => regex.test(line));
 
         if (targetLine) {
-            // Split the line by semicolons to get all the parts
             const parts = targetLine.split(';');
-
-            // Extract and clean the station ID from the last column
             let StationID = parts[parts.length - 1].trim();
-
-            // Further cleaning can be done here if needed (e.g., removing specific characters)
-            StationID = StationID.replace(/[^0-9]/g, ''); // Example: remove all non-alphanumeric characters
-
-            // console.log(`Station ID: ${StationID}`);
+            StationID = StationID.replace(/[^0-9]/g, '');
             return StationID;
         } else {
-            // console.log(`The specified combination of ${cleanedFreq};*${picode}*;*${cityPattern}* was not found.`);
             return null;
         }
     } catch (error) {
