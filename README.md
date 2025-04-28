@@ -1,7 +1,8 @@
 # Stream Plugin for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
 This plugin provides a Stream button which can be used to access a direct link to the live stream after the station has been successfully identified (button becomes light!).
 
-![image](https://github.com/user-attachments/assets/cd4e5941-159d-47a4-8477-d333b31f1d9a)
+![image](https://github.com/user-attachments/assets/eff42262-1b6c-4dc1-93a6-9ca2e88d2192)
+
 
 
 
