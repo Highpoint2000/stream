@@ -6,9 +6,10 @@ This plugin provides a Stream button which can be used to access a direct link t
 
 
 
-## Version 1.1 (only works from web server version 1.3.5!!!)
+## Version 2.0 (only works from web server version 1.3.5!!!)
 
-- Design adjustments for web server version 1.3.5
+- FM scan authentication no longer required - streams can be played directly via the Stream button
+- Update information added
 
 
 ## Installation notes:
@@ -18,13 +19,15 @@ This plugin provides a Stream button which can be used to access a direct link t
 3. Restart the server
 4. Activate the plugin it in the settings
 
-## Configuration options:
-
 ## Notes: 
 
-To use the plugin you need an account at fmscan.org. To do this, simply hold down the stream button and the login page will open. If you are successfully logged in and the stream button lights up (channel detection is complete), you can click on the button and the window with the link to the live stream will open.
+Once a station has been fully identified, the corresponding live stream can be started by pressing the Stream button. Changing the frequency or pressing the button again will end the audio stream.
 
 ## History:
+
+### Version 1.1 (only works from web server version 1.3.5!!!)
+
+- Design adjustments for web server version 1.3.5
 
 ### Version 1.0 (only works from version 1.2.6 !!!)
 
