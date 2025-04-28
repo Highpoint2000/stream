@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Stream',
-    version: '1.1',
+    version: '2.0',
     author: 'Highpoint',
     frontEndPath: 'Stream/stream.js'
 }
