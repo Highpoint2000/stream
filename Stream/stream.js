@@ -1,210 +1,232 @@
 (() => {
-///////////////////////////////////////////////////////////////
-///                                                         ///
-///  STREAM PLUGIN SCRIPT FOR FM-DX-WEBSERVER (V1.1)        ///
-///                                                         /// 
-///  by Highpoint              last update: 17.02.25        ///
-///                                                         ///
-///  https://github.com/Highpoint2000/stream                ///
-///                                                         ///
-///////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////
+  ///                                                         ///
+  ///  STREAM PLUGIN SCRIPT FOR FM-DX-WEBSERVER (V2.0)        ///
+  ///                                                         /// 
+  ///  by Highpoint              last update: 28.04.25        ///
+  ///                                                         ///
+  ///  https://github.com/Highpoint2000/stream                ///
+  ///                                                         ///
+  ///////////////////////////////////////////////////////////////
 
-///  This plugin only works from web server version 1.3.5 !!!
+  /* ==== Plugin Settings =============================================== */
+  const PLUGIN_VERSION   = '2.0';
+  const PLUGIN_JS_FILE   = 'main/Stream/stream.js';
+  const PLUGIN_PATH      = 'https://raw.githubusercontent.com/highpoint2000/Stream/';
+  const CORS_PROXY_URL   = 'https://cors-proxy.de:13128/';
 
- const PLUGIN_VERSION   = '1.1';
-let pressTimer; // Timer variable
-const longPressDuration = 1000; // Duration for long press in milliseconds
-let streamWindow; // Variable to keep track of the opened stream window
-let cachedData = null; // Variable to cache the file content
-let stationid;
+  /* ==== State Variables =============================================== */
+  let pressTimer;
+  let cachedData        = null;
+  let stationid;
+  let audioPlayer       = null;
+  let STREAM_ACTIVE     = false;
+  let isAdminLoggedIn   = false;
+  let isTuneLoggedIn    = false;
+  let isAuthenticated   = false;
 
-// Initialize the WebSocket connection when the DOM is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    setupWebSocket(); // Activate WebSocket on start
-    // Erstelle den Button über die Plugin-Funktion
-    createButton('Stream-on-off');
-});
+  const UPDATE_KEY       = 'STREAM_lastUpdateNotification';
 
-// Setup WebSocket connection
-async function setupWebSocket() {
-    try {
-        autoScanSocket = await window.socketPromise;
+  document.addEventListener('DOMContentLoaded', () => {
+    checkAdminMode();
+    setupWebSocket();
+    createToggle('Stream-on-off');
+    // perform version check after load
+    setTimeout(checkPluginVersion, 2500);
+  });
 
-        autoScanSocket.addEventListener("open", () => {
-            console.log("WebSocket connected.");
-        });
+  /* =================================================================== *
+   *  Admin / tune mode detection                                        *
+   * =================================================================== */
+  function checkAdminMode() {
+    const txt = document.body.textContent || document.body.innerText;
+    isAdminLoggedIn = txt.includes('You are logged in as an administrator.')
+                   || txt.includes('You are logged in as an adminstrator.');
+    isTuneLoggedIn  = txt.includes('You are logged in and can control the receiver.');
+    isAuthenticated = isAdminLoggedIn || isTuneLoggedIn;
+  }
 
-        autoScanSocket.addEventListener("message", handleWebSocketMessage);
-
-        autoScanSocket.addEventListener("error", (error) => {
-            console.error("WebSocket error:", error);
-        });
-
-        autoScanSocket.addEventListener("close", (event) => {
-            console.log("WebSocket closed:", event);
-            // Optional: Versuche nach einer kurzen Pause neu zu verbinden
-            setTimeout(setupWebSocket, 5000);
-        });
-
-    } catch (error) {
-        console.error("Failed to setup WebSocket:", error);
+  /* =================================================================== *
+   *  Version check (admins only)                                        *
+   * =================================================================== */
+  function shouldShowUpdateToast() {
+    const last = +localStorage.getItem(UPDATE_KEY) || 0;
+    if (Date.now() - last > 86400000) {
+      localStorage.setItem(UPDATE_KEY, Date.now());
+      return true;
     }
-}
-
-// Handle incoming WebSocket messages
-async function handleWebSocketMessage(event) {
-    try {
-        const eventData = JSON.parse(event.data);
-        const frequency = eventData.freq;
-        const txInfo = eventData.txInfo;
-
-        // Extrahiere die stationid aus txInfo
-        stationid = txInfo ? txInfo.id : "";
-        const picode = eventData.pi; // Annahme: `pi` ist in eventData vorhanden
-        const city = txInfo ? txInfo.city : ""; // Annahme: `city` ist in txInfo vorhanden
-        const itu = txInfo ? txInfo.itu : "";
-
-        // Hole die StationID, falls nicht vorhanden und itu === 'POL'
-        if (itu === 'POL') {
-            const fetchedStationID = await fetchstationid(frequency, picode, city);
-            if (fetchedStationID) {
-                stationid = fetchedStationID;
-            }
-        }
-
-        // Aktualisiere den Button basierend auf der stationid
-        const $pluginButton = $('#Stream-on-off');
-        if ($pluginButton.length > 0) {
-            if (stationid) {
-                $pluginButton.addClass('bg-color-4').removeClass('bg-color-2');
-                // Klick-Event: Öffne das Stream-Fenster
-                $pluginButton.off('click').on('click', () => {
-                    streamWindow = window.open(`https://fmscan.org/stream.php?i=${stationid}`, 'newWindow', 'width=800,height=160');
-                    if (streamWindow) {
-                        streamWindow.focus(); // Fenster in den Vordergrund holen
-                    }
-                });
-            } else {
-                $pluginButton.addClass('bg-color-2').removeClass('bg-color-4');
-                $pluginButton.off('click');
-            }
-        }
-    } catch (error) {
-        console.error("Error processing WebSocket message:", error);
+    return false;
+  }
+  function compareVersions(a, b) {
+    const parse = v => v.split(/(\d+|[a-z]+)/i).filter(Boolean).map(x => isNaN(x) ? x : +x);
+    const A = parse(a), B = parse(b);
+    for (let i = 0; i < Math.max(A.length, B.length); i++) {
+      const x = A[i] || 0, y = B[i] || 0;
+      if (x === y) continue;
+      if (typeof x === 'number' && typeof y === 'number') return x > y ? 1 : -1;
+      return x > y ? 1 : -1;
     }
-}
+    return 0;
+  }
+  function checkPluginVersion() {
+    if (!isAuthenticated) return;
+    fetch(`${PLUGIN_PATH}${PLUGIN_JS_FILE}`)
+      .then(r => r.text())
+      .then(text => {
+        const m = text.match(/const\s+PLUGIN_VERSION\s*=\s*['"]([\d.]+[A-Za-z-]*)['"]/);
+        if (!m) return;
+        const remote = m[1];
+        if (compareVersions(PLUGIN_VERSION, remote) === -1 && shouldShowUpdateToast()) {
+          sendToast(
+            'warning important',
+            'STREAM',
+            `Update available:<br>${PLUGIN_VERSION} → ${remote}`,
+            false,
+            false
+          );
+        }
+      })
+      .catch(e => console.error('STREAM: version check failed', e));
+  }
 
-// Handle long press on the button
-function startPressTimer() {
-    pressTimer = setTimeout(() => {
-        window.open('https://fmscan.org/', 'newWindow', 'width=350,height=650');
-    }, longPressDuration);
-}
+  /* =================================================================== *
+   *  WebSocket and message handling                                     *
+   * =================================================================== */
+  async function setupWebSocket() {
+    try {
+      const autoScanSocket = await window.socketPromise;
+      autoScanSocket.addEventListener("open", () => console.log("WebSocket connected."));
+      autoScanSocket.addEventListener("message", handleWebSocketMessage);
+      autoScanSocket.addEventListener("error", e => console.error("WebSocket error:", e));
+      autoScanSocket.addEventListener("close", () => setTimeout(setupWebSocket, 5000));
+    } catch (error) {
+      console.error("Failed to setup WebSocket:", error);
+    }
+  }
 
-// Cancel the press timer if the button is released or mouse leaves
-function cancelPressTimer() {
-    clearTimeout(pressTimer);
-}
+  async function handleWebSocketMessage(event) {
+    try {
+      const { freq: frequency, pi: picode, txInfo } = JSON.parse(event.data);
+      const wasActive = STREAM_ACTIVE;
+      stationid = txInfo?.id || "";
+      const city = txInfo?.city || "";
+      const itu  = txInfo?.itu  || "";
 
-// ───────────────────────────────────────────────────────────────
-// New button creation and migration of event listeners
-function createButton(buttonId) {
-  (function waitForFunction() {
-    const maxWaitTime = 10000;
-    let functionFound = false;
+      if (itu === 'POL' && !stationid) {
+        const fetched = await fetchstationid(frequency, picode, city);
+        if (fetched) stationid = fetched;
+      }
 
-    const observer = new MutationObserver((mutationsList, observer) => {
+      const $btn = $('#Stream-on-off');
+      if (!stationid) {
+        if (wasActive) stopStream(), STREAM_ACTIVE = false;
+        $btn.removeClass('bg-color-4 active').addClass('bg-color-2');
+      } else {
+        $btn.removeClass('bg-color-2').addClass('bg-color-4');
+      }
+    } catch (error) {
+      console.error("Error processing WebSocket message:", error);
+    }
+  }
+
+  /* =================================================================== *
+   *  Toggle button creation                                             *
+   * =================================================================== */
+  function createToggle(id) {
+    const obs = new MutationObserver((_, observer) => {
       if (typeof addIconToPluginPanel === 'function') {
         observer.disconnect();
-        // Erstelle den Button via Plugin-Panel
-        // Ändere hier das Label von "Screenshot" zu "STREAM"
-        addIconToPluginPanel(buttonId, "STREAM", "solid", "play", `Plugin Version: ${plugin_version}`);
-        functionFound = true;
+        addIconToPluginPanel(id, "STREAM", "solid", "play", `Plugin Version: ${PLUGIN_VERSION}`);
+        const btnObs = new MutationObserver(() => {
+          const $btn = $(`#${id}`);
+          if (!$btn.length) return;
+          btnObs.disconnect();
 
-        const buttonObserver = new MutationObserver(() => {
-          const $pluginButton = $(`#${buttonId}`);
-          if ($pluginButton.length > 0) {
-            // Füge die Event-Listener für den Long-Press hinzu
-            $pluginButton.on('mousedown', startPressTimer);
-            $pluginButton.on('mouseup mouseleave', cancelPressTimer);
-            // Entferne diesen Observer, um Konflikte mit separaten Click-Handlern zu vermeiden
-            buttonObserver.disconnect();
-          }
+          $btn.addClass('hide-phone bg-color-2');
+          $btn.on('click', async e => {
+            e.preventDefault();
+            if (!stationid) {
+              sendToast('warning important','Play Stream','Station ID not found!',false,false);
+              return;
+            }
+            if (!STREAM_ACTIVE) {
+              try {
+                const token  = '924924';
+                const API_URL = `https://api.fmlist.org/152/fmdxGetStreamById.php?id=${stationid}&token=${token}`;
+                const domain = window.location.host;
+                const url    = `${CORS_PROXY_URL}${API_URL}&cb=${Date.now()}&domain=${domain}`;
+                const resp   = await fetch(url);
+                if (!resp.ok) throw new Error(`API-Error ${resp.status}`);
+                const streams = await resp.json();
+                if (!Array.isArray(streams) || streams.length === 0) {
+                  sendToast('warning important','Play Stream','No URL found!',false,false);
+                  return;
+                }
+                const best = streams.reduce((a,b)=>parseInt(b.bitrate)>parseInt(a.bitrate)?b:a);
+                playStream(best.linkname);
+                sendToast('info important','Play Stream',
+                  `<div style="max-width:150px;white-space:normal;word-break:break-all;">${best.linkname}</div>`,
+                  false,false);
+                STREAM_ACTIVE = true;
+                $btn.addClass('active');
+              } catch (err) {
+                console.error('Fehler beim Laden des Streams:', err);
+              }
+            } else {
+              stopStream(); STREAM_ACTIVE = false; $btn.removeClass('active');
+            }
+          });
         });
-        buttonObserver.observe(document.body, { childList: true, subtree: true });
+        btnObs.observe(document.body,{childList:true,subtree:true});
+
+        $('<style>').prop('type','text/css').html(`
+          #${id}:hover{color:var(--color-5);filter:brightness(120%)}
+          #${id}.active{background-color:var(--color-2)!important;filter:brightness(120%)}
+        `).appendTo('head');
       }
     });
+    obs.observe(document.body,{childList:true,subtree:true});
+  }
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    setTimeout(() => {
-      observer.disconnect();
-      if (!functionFound) {
-        console.error(`Function addIconToPluginPanel not found after ${maxWaitTime / 1000} seconds.`);
-      }
-    }, maxWaitTime);
-  })();
-
-  // Zusätzliche CSS-Anpassungen für den neuen Button
-  const aStreamCss = `
-    #${buttonId}:hover {
-      color: var(--color-5);
-      filter: brightness(120%);
+  /* =================================================================== *
+   *  Audio playback                                                     *
+   * =================================================================== */
+  function playStream(url) {
+    if (!audioPlayer) {
+      audioPlayer = document.createElement('audio');
+      audioPlayer.id = 'fmdx-stream-player';
+      audioPlayer.autoplay = true; audioPlayer.controls = false;
+      audioPlayer.style.display = 'none'; document.body.appendChild(audioPlayer);
     }
-  `;
-  $("<style>")
-    .prop("type", "text/css")
-    .html(aStreamCss)
-    .appendTo("head");
-}
+    audioPlayer.src = url; audioPlayer.play().catch(e=>console.error('Audio play failed:',e));
+  }
+  function stopStream() {
+    if (audioPlayer) {
+      audioPlayer.pause(); audioPlayer.src = '';
+      audioPlayer.remove(); audioPlayer = null;
+    }
+  }
 
-// Fetch the station ID from the URL
-async function fetchstationid(frequency, picode, city) { 
+  /* =================================================================== *
+   *  Station ID lookup                                                  *
+   * =================================================================== */
+  async function fetchstationid(frequency,picode,city) {
     try {
-        // Überprüfe, ob die Daten bereits im Cache sind
-        if (!cachedData) {
-            const response = await fetch("https://tef.noobish.eu/logos/scripts/StationID_PL.txt");
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            cachedData = await response.text();
-        }
-
-        // Entferne den Punkt aus der Frequenz
-        const cleanedFreq = frequency.replace('.', '');
-
-        // Entferne Sonderzeichen aus der Stadtbezeichnung und wandle in Kleinbuchstaben um
-        const cleanedCity = city.replace(/[^a-z]/gi, '').toLowerCase();
-
-        // Extrahiere die ersten drei Zeichen der bereinigten Stadt
-        const cityPrefix = cleanedCity.substring(0, 3);
-
-        // Erstelle ein Muster mit Wildcards um jedes der ersten drei Zeichen der Stadt
-        const cityPattern = cityPrefix
-            .split('')
-            .map(char => `.*${char}`)
-            .join('');
-        
-        // Baue den Suchstring mit Wildcards zusammen
-        const targetString = `${cleanedFreq};${picode};${cityPattern}.*`;
-
-        // Erstelle einen Regex (case-insensitive), um den String zu finden
-        const regex = new RegExp(targetString, 'i');
-
-        // Suche in den gecachten Daten
-        const targetLine = cachedData.split('\n').find(line => regex.test(line));
-
-        if (targetLine) {
-            const parts = targetLine.split(';');
-            let StationID = parts[parts.length - 1].trim();
-            StationID = StationID.replace(/[^0-9]/g, '');
-            return StationID;
-        } else {
-            return null;
-        }
-    } catch (error) {
-        console.error('Error fetching station ID:', error);
-        return null;
+      if (!cachedData) {
+        const res = await fetch("https://tef.noobish.eu/logos/scripts/StationID_PL.txt");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        cachedData = await res.text();
+      }
+      const cleanedFreq = frequency.replace('.','');
+      const cleanedCity = city.replace(/[^a-z]/gi,'').toLowerCase();
+      const pattern     = cleanedCity.slice(0,3).split('').map(c=>`.*${c}`).join('');
+      const regex       = new RegExp(`${cleanedFreq};${picode};${pattern}.*`,'i');
+      const line        = cachedData.split('\n').find(l=>regex.test(l));
+      if (!line) return null;
+      return line.split(';').pop().trim().replace(/[^0-9]/g,'');
+    } catch(e) {
+      console.error('Error fetching station ID:',e);
+      return null;
     }
-}
+  }
 })();
