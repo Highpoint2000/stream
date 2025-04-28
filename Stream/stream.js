@@ -11,7 +11,7 @@
 
 ///  This plugin only works from web server version 1.3.5 !!!
 
-const plugin_version = 'V1.1'; // Plugin version
+const plugin_version = '1.1'; // Plugin version
 let pressTimer; // Timer variable
 const longPressDuration = 1000; // Duration for long press in milliseconds
 let streamWindow; // Variable to keep track of the opened stream window
